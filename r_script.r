@@ -36,7 +36,7 @@ for (i in seq_len(nrow(ses_data))) {
     dt <- mdy(ses_data[i, 3])
     ses_data[i, 7] <- dt
     ses_data[i, 8] <- format.Date(dt, "%Y-%m")
-    ses_data[i, 9] <- wday(dt)
+    ses_data[i, 9] <- wday(dt, week_start=1)
 }
 
 ses_data <- ses_data %>%
@@ -187,7 +187,7 @@ sheet3 <- sheet3 %>%
     mutate(ecr = transactions / user_sessions)
 
 # Reformat the days of the week for readability
-weekdays <- c("Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri")
+weekdays <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 for (i in seq_len(nrow(sheet3))) {
     sheet3[i, 7] <- weekdays[i]

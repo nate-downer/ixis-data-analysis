@@ -19,15 +19,15 @@ for i in df_ses.index:
     df_ses.loc[i,'dt'] = dt
     df_ses.loc[i,'month'] = str(dt.year) + '-' + str(dt.strftime('%m'))
 
-# Create a list of "suspect browsers" containing browsers that were never actualy used to make a transaction
-    # Note: These browsers are likely bots or webscrappers, and should not be counted as user sessions
-    # Identifying and removing these sessions will make the data more useful to the client
-browsers = df_ses[['browser','sessions', 'transactions','qty']].groupby('browser').sum()
-browsers.sort_values('sessions', ascending=False, inplace=True)
-suspect_browsers = list(browsers[(browsers['transactions'] == 0) & (browsers['qty'] == 0)].index)
+# Create a list of "user browsers" with browsers that were used in transactions
+    # Note: The omitted browsers are likely bots or webscrappers, and should
+    # not be counted as user sessions. Identifying and removing these sessions
+    # will make the data more useful to the client
 
-# Use suspect_browsers list to get a cleaner set of data with most bots and web scrappers removed
-clean = df_ses.drop(df_ses[df_ses['browser'].isin(suspect_browsers)].index)
+browsers = df_ses[['browser','sessions', 'transactions','qty']].groupby('browser').sum()
+user_browsers = list(browsers[(browsers['transactions'] > 0) & (browsers['qty'] > 0)].index)
+
+clean = df_ses.drop(df_ses[~df_ses['browser'].isin(user_browsers)].index)
 clean.rename(columns={'sessions':'user_sessions'}, inplace=True)
 df_ses.rename(columns={'sessions':'all_sessions'}, inplace=True)
 
@@ -35,10 +35,11 @@ df_ses.rename(columns={'sessions':'all_sessions'}, inplace=True)
 # Group the data by month and device category
 sheet1 = df_ses[['device_category', 'transactions', 'qty', 'month', 'all_sessions']].groupby(by=['month', 'device_category']).sum()
 
-# Add a column containing the session data from non-suspect browsers
-    # Note: Because of the method used to identify suspect browsers, 
+# Add a column containing the session data from user browsers
+    # Note: Because of the method used to identify non-user browsers, 
     # removing them only effects session data, so alternate values for
     # transactions and quantity don't need to be included
+
 user_sessions = clean[['device_category', 'user_sessions', 'month']].groupby(by=['month', 'device_category']).sum()
 sheet1 = sheet1.join(user_sessions)
 
@@ -49,7 +50,7 @@ sheet1['ecr'] = sheet1['transactions'] / sheet1['user_sessions']
 # Group the data by month
 sheet2 = df_ses[['transactions', 'qty', 'month', 'all_sessions']].groupby(by=['month']).sum()
 
-# Add a column containing the session data from non-suspect browsers
+# Add a column containing the session data from user browsers
 user_sessions = clean[['user_sessions', 'month']].groupby(by=['month']).sum()
 sheet2 = sheet2.join(user_sessions)
 
@@ -100,7 +101,7 @@ sheet3 = sheet3[['transactions', 'qty', 'all_sessions', 'user_sessions', 'weekda
 sheet3['ecr'] = sheet3['transactions'] / sheet3['user_sessions']
 
 # Reformat the days of the week for readability
-weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 for i in sheet3.index:
     sheet3.loc[i,'weekday'] = weekdays[i]
@@ -109,8 +110,9 @@ sheet3.set_index('weekday', inplace=True)
 
 # Create Sheet 4: 
 # Group the session data by browser
-    # Note: Because browsers were used to distinguish between 'suspect sessions' and
-    # user sessions, that distinction has no meaning when the data is grouped by browser
+    # Note: Because browsers were used to distinguish between 'user sessions' and
+    # non-user sessions, that distinction has no meaning when the data is grouped by browser
+
 sheet4 = df_ses[['browser','transactions','qty','all_sessions']].groupby('browser').sum()
 
 # Add ECR column
@@ -121,10 +123,10 @@ for i in sheet4.index:
     qty_val = sheet4.loc[i,'qty']
     transactions_val = sheet4.loc[i,'transactions']
 
-    if (qty_val == 0) & (transactions_val == 0):
-        sheet4.loc[i,'browser_in_user_sessions'] = False
-    else:
+    if (qty_val > 0) & (transactions_val > 0):
         sheet4.loc[i,'browser_in_user_sessions'] = True
+    else:
+        sheet4.loc[i,'browser_in_user_sessions'] = False
 
 sheet4.sort_values('all_sessions', ascending=False, inplace=True)
 
