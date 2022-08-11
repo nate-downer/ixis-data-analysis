@@ -113,22 +113,23 @@ sheet3.set_index('weekday', inplace=True)
     # Note: Because browsers were used to distinguish between 'user sessions' and
     # non-user sessions, that distinction has no meaning when the data is grouped by browser
 
-sheet4 = df_ses[['browser','transactions','qty','all_sessions']].groupby('browser').sum()
+sheet4 = df_ses[['browser', 'device_category', 'all_sessions', 'transactions','qty']].groupby(['browser', 'device_category']).sum()
+sheet4.reset_index(inplace=True)
 
 # Add ECR column
 sheet4['ecr'] = sheet4['transactions'] / sheet4['all_sessions']
 
 # Add a column indicating which browsers are included in user_sessions data
 for i in sheet4.index:
-    qty_val = sheet4.loc[i,'qty']
-    transactions_val = sheet4.loc[i,'transactions']
-
-    if (qty_val > 0) & (transactions_val > 0):
+    if sheet4.loc[i,'browser'] in user_browsers:
         sheet4.loc[i,'browser_in_user_sessions'] = True
     else:
         sheet4.loc[i,'browser_in_user_sessions'] = False
 
-sheet4.sort_values('all_sessions', ascending=False, inplace=True)
+sheet4.dropna(inplace=True)
+sheet4.sort_values(['all_sessions', 'browser'], ascending=False, inplace=True)
+sheet4.set_index('browser',inplace=True, drop=True)
+sheet4 = sheet4[sheet4['all_sessions'] >= 20]
 
 # Export data to Excel
 with pd.ExcelWriter('python_worksheets.xlsx') as writer:

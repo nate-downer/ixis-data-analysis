@@ -32,17 +32,10 @@ adds_data <- adds_data %>%
   rename(datetime = V4,
          month = V5)
 
-for (i in seq_len(nrow(ses_data))) {
-    dt <- mdy(ses_data[i, 3])
-    ses_data[i, 7] <- dt
-    ses_data[i, 8] <- format.Date(dt, "%Y-%m")
-    ses_data[i, 9] <- wday(dt, week_start=1)
-}
-
 ses_data <- ses_data %>%
-  rename(datetime = V7,
-         month = V8,
-         weekday_no = V9)
+    mutate(dt = mdy(dim_date),
+           month = format.Date(dt, "%Y-%m"),
+           weekday_no = wday(dt, week_start = 1))
 
 # Create a list of "user browsers" with browsers that were used in transactions
     # Note: The omitted browsers are likely bots or webscrappers, and should
@@ -54,16 +47,12 @@ browsers <- ses_data %>%
         summarise(all_sessions = sum(sessions),
                   transactions = sum(transactions),
                   qty = sum(qty),
-                  .groups = "drop")
-
-browsers <- browsers %>%
-    filter(transactions > 0 & qty > 0)
-
-user_browsers <- browsers %>%
-    pull(browser)
+                  .groups = "drop") %>%
+            filter(transactions > 0 & qty > 0) %>%
+    ungroup()
 
 clean <- ses_data %>%
-    filter(browser %in% user_browsers)
+    filter(browser %in% browsers$browser)
 
 # Create Sheet 1:
 # Group the data by month and device category
@@ -72,7 +61,8 @@ sheet1 <- ses_data %>%
         summarise(all_sessions = sum(sessions),
                   transactions = sum(transactions),
                   qty = sum(qty),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 # Add a column containing the session data from user browsers
     # Note: Because of the method used to identify user browsers,
@@ -83,7 +73,8 @@ sheet1 <- ses_data %>%
 user_sessions <- clean %>%
     group_by(month, device_category) %>%
         summarise(user_sessions = sum(sessions),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 sheet1 <- merge(sheet1, user_sessions, by = c("month", "device_category"))
 
@@ -108,7 +99,8 @@ sheet2 <- ses_data %>%
         summarise(all_sessions = sum(sessions),
                   transactions = sum(transactions),
                   qty = sum(qty),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 # Merge in the adds data
 sheet2 <- merge(sheet2, select(adds_data, month, adds_to_cart), by = "month")
@@ -117,12 +109,10 @@ sheet2 <- merge(sheet2, select(adds_data, month, adds_to_cart), by = "month")
 user_sessions <- clean %>%
     group_by(month) %>%
         summarise(user_sessions = sum(sessions),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 sheet2 <- merge(sheet2, user_sessions, by = "month")
-
-sheet2 <- sheet2 %>%
-    relocate(all_sessions, .before = user_sessions)
 
 # Add an ECR column
 sheet2 <- sheet2 %>%
@@ -130,22 +120,19 @@ sheet2 <- sheet2 %>%
 
 # Get the data concerning the two most recent months
 sheet2 <- sheet2 %>%
-    arrange(desc(month))
+    arrange(desc(month)) %>%
+        head(n = 2)
 
-sheet2 <- sheet2[1:2, ]
-
-# Format the sheet to display month names and differneces
+# Format the sheet to display month names and differences
 sheet2 <- sheet2 %>%
     remove_rownames %>%
-        column_to_rownames("month")
-
-sheet2 <- sheet2 %>%
-    select(transactions,
-           qty,
-           all_sessions,
-           user_sessions,
-           ecr,
-           adds_to_cart)
+        column_to_rownames("month") %>%
+            select(transactions,
+                qty,
+                all_sessions,
+                user_sessions,
+                ecr,
+                adds_to_cart)
 
 sheet2 <- as.data.frame(t(sheet2))
 
@@ -172,13 +159,15 @@ sheet3 <- ses_data %>%
         summarise(all_sessions = mean(sessions),
                   transactions = mean(transactions),
                   qty = mean(qty),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 # Add a column containing the session data from user browsers
 user_sessions <- clean %>%
     group_by(weekday_no) %>%
         summarise(user_sessions = mean(sessions),
-                  .groups = "drop")
+                  .groups = "drop") %>%
+    ungroup()
 
 sheet3 <- merge(sheet3, user_sessions, by = "weekday_no")
 
@@ -211,41 +200,40 @@ sheet3 <- sheet3 %>%
     # has no meaning when the data is grouped by browser
 
 sheet4 <- ses_data %>%
-    group_by(browser) %>%
+    group_by(browser, device_category) %>%
         summarise(all_sessions = sum(sessions),
                   transactions = sum(transactions),
                   qty = sum(qty),
-                  .groups = "drop")
-
-sheet4 <- sheet4 %>%
-    arrange(desc(all_sessions))
+                  .groups = "drop") %>%
+            arrange(desc(all_sessions)) %>%
+                filter(all_sessions >= 20) %>%
+    ungroup()
 
 # Add ECR column
 sheet4 <- sheet4 %>%
     mutate(ecr = transactions / all_sessions)
 
-sheet4 <- sheet4 %>%
-    arrange(desc(all_sessions))
-
 # Add a column indicating which browsers are included in user_sessions data
 for (i in seq_len(nrow(sheet4))) {
-    if (sheet4[i, 3] > 0 && sheet4[i, 4] > 0) {
-        sheet4[i, 6] <- TRUE
+    if (sheet4[i, 1] %in% browsers$browser) {
+        sheet4[i, 7] <- TRUE
     } else {
-        sheet4[i, 6] <- FALSE
+        sheet4[i, 7] <- FALSE
     }
 }
 
 sheet4 <- sheet4 %>%
-    rename(browser_in_user_sessions = ...6)
+    rename(browser_in_user_sessions = ...7)
 
 sheet4 <- sheet4 %>%
     select(browser,
+           device_category,
+           all_sessions,
            transactions,
            qty,
-           all_sessions,
            ecr,
-           browser_in_user_sessions)
+           browser_in_user_sessions) %>%
+                        drop_na()
 
 # Export data to Excel
 sheets_list <- list("Volume by Month + Device" = sheet1,
